@@ -14,7 +14,7 @@ from rq import Queue
 
 from database import SessionLocal, DocumentTask
 
-# Настройка логирования
+#  логирование
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -25,13 +25,16 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Document Analyzer API")
 
-# Используем переменные окружения для подключения к Redis
+#  переменные окружения для подключения к Redis
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
-task_queue = Queue('ocr_tasks', connection=redis_conn)
 
-STORAGE_DIR = "/app/storage"
+# стандартная очередь для простоты маршрутизации
+task_queue = Queue('default', connection=redis_conn)
+
+# фикс
+STORAGE_DIR = "/storage"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse)
@@ -40,6 +43,15 @@ async def serve_frontend():
     logger.info("Пользователь открыл главную страницу.")
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
+
+# фикс маршруты для PWA (Manifest и Service Worker)
+@app.get("/manifest.json")
+async def get_manifest():
+    return FileResponse("manifest.json")
+
+@app.get("/sw.js")
+async def get_sw():
+    return FileResponse("sw.js")
 
 @app.post("/upload/")
 async def upload_document(files: List[UploadFile] = File(...), tool_id: str = Form(...), 
@@ -56,7 +68,8 @@ async def upload_document(files: List[UploadFile] = File(...), tool_id: str = Fo
     job = task_queue.enqueue('worker.route_task', tool_id, file_paths, boxes, extra_param)
     
     db = SessionLocal()
-    new_task = DocumentTask(id=job.id, filename=files[0].filename, status="pending")
+    # фикс минус filename т.к. его нет в модели БД
+    new_task = DocumentTask(id=job.id, status="pending")
     db.add(new_task)
     db.commit()
     db.close()
