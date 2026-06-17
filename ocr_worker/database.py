@@ -1,29 +1,38 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Column, String, Text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# 1. получаем URL базы данных из .env
+# 1. Получаем URL базы данных из переменных окружения
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# 2. настраиваем движок подключения
+# 2. Настраиваем движок подключения
 if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-    # подключение к PostgreSQL в Docker
     engine = create_engine(DATABASE_URL)
 else:
-    # для локальных тестов: создаем SQLite в папке storage
     os.makedirs("/storage", exist_ok=True)
     FALLBACK_URL = "sqlite:////storage/docuflow.db"
     engine = create_engine(
         FALLBACK_URL, connect_args={"check_same_thread": False}
     )
 
-# 3. создаем фабрику сессий (через нее мы будем делать запросы к БД)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# 4. базовый класс для описания структуры таблиц
 Base = declarative_base()
 
-# 5. функция-зависимость для FastAPI чтобы безопасно открывать и закрывать соединение
+#фикс
+class DocumentTask(Base):
+    __tablename__ = "document_tasks"
+
+    #  id - сгенерированный UUID
+    id = Column(String, primary_key=True, index=True)
+    #  status -  состояние задачи
+    status = Column(String, default="pending")
+    #  extracted_text -  результаты распознавания или текст ошибки
+    extracted_text = Column(Text, nullable=True)
+
+#  создаем таблицы в базе данных при запуске
+Base.metadata.create_all(bind=engine)
+
+# функция-зависимость для безопасного открытия и закрытия сессий
 def get_db():
     db = SessionLocal()
     try:
