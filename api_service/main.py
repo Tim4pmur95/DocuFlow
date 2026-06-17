@@ -31,7 +31,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
 
 # стандартная очередь для простоты маршрутизации
-task_queue = Queue('default', connection=redis_conn)
+task_queue = Queue('ocr_tasks', connection=redis_conn)
 
 # фикс
 STORAGE_DIR = "/storage"
