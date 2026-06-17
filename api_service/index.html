@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuFlow</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#e53935">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root { --primary: #e53935; --hover: #c62828; --bg: #f5f5fa; --text: #333; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; color: #1a1a1a; }
+        .header p { color: #666; font-size: 1.2em; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .card { background: white; border-radius: 12px; padding: 25px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+        .icon { font-size: 2.5em; margin-bottom: 15px; }
+        .card h3 { margin: 0 0 10px 0; font-size: 1.2em; color: #222; }
+        .card p { margin: 0; font-size: 0.9em; color: #777; line-height: 1.4; flex-grow: 1; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; overflow-y: auto; pointer-events: none; }
+        .modal-content { background: white; padding: 30px; border-radius: 12px; max-width: 900px; width: 100%; text-align: center; position: relative; margin: 40px auto; }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5em; cursor: pointer; color: #aaa; }
+        .close-btn:hover { color: #333; }
+        .upload-area { display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; width: 100%; border: 2px dashed var(--primary); padding: 40px; border-radius: 8px; margin: 20px 0; background-color: #ffebee; cursor: pointer; transition: 0.3s; }
+        .upload-area:hover { background-color: #ffcdd2; }
+        input[type="file"] { display: none; }
+        .param-input { display: none; width: 80%; padding: 12px; margin: 15px auto; border: 2px solid #ccc; border-radius: 6px; font-size: 16px; text-align: center;}
+        .loader { display: none; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .btn { background: var(--primary); color: white; border: none; padding: 12px 25px; border-radius: 5px; font-size: 1em; cursor: pointer; font-weight: bold; text-decoration: none; display: inline-block;}
+        .btn:hover { background: var(--hover); }
+        .btn-success { background-color: #2ecc71; margin-bottom: 20px;}
+        .btn-success:hover { background-color: #27ae60; }
+        #result-area { display: none; margin-top: 20px; text-align: left; }
+        textarea { width: 100%; height: 150px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; font-family: monospace; resize: vertical; box-sizing: border-box;}
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>DocuFlow</h1>
+    <p>Все инструменты для работы с документами в одном месте.</p>
+</div>
+
+<div class="grid">
+    <div class="card" style="border: 2px solid #2980b9;" onclick="openTool('ocr_manual', 'Ручная разметка', 'Выделите зоны вручную для 100% точности')">
+        <div class="icon">✂️</div><h3>Ручная разметка</h3><p>Идеальная точность. Выделите сложные формулы рамкой.</p>
+    </div>
+    <div class="card" style="border: 2px solid #e67e22;" onclick="openTool('ocr_text', 'Извлечь текст (OCR)', 'Распознавание сплошного текста в .docx')">
+        <div class="icon">📝</div><h3>OCR: Текст в Word</h3><p>Распознавание текста с отсканированных документов.</p>
+    </div>
+    <div class="card" style="border: 2px solid #e74c3c;" onclick="openTool('ocr_math', 'Распознать формулы', 'Преобразование фотографий уравнений')">
+        <div class="icon">∑</div><h3>OCR: Формулы (LaTeX)</h3><p>Преобразование изображений с математикой в цифровой формат.</p>
+    </div>
+    <div class="card" style="border: 2px solid #2c3e50;" onclick="openTool('pdf_protect', 'Защитить PDF', 'Установить пароль на документ')">
+        <div class="icon">🔒</div><h3>Защитить PDF</h3><p>Надежно зашифруйте документ паролем от посторонних.</p>
+    </div>
+    <div class="card" style="border: 2px solid #7f8c8d;" onclick="openTool('pdf_unprotect', 'Снять защиту PDF', 'Удалить пароль с документа')">
+        <div class="icon">🔓</div><h3>Снять защиту PDF</h3><p>Удалите пароль с файла, если вы его знаете.</p>
+    </div>
+    <div class="card" style="border: 2px solid #fd79a8;" onclick="openTool('pdf_rotate', 'Повернуть PDF', 'Повернуть все страницы')">
+        <div class="icon">🔄</div><h3>Повернуть PDF</h3><p>Поверните страницы документа на 90, 180 или 270 градусов.</p>
+    </div>
+    <div class="card" style="border: 2px solid #d63031;" onclick="openTool('pdf_delete', 'Удалить страницы', 'Удалите ненужные страницы')">
+        <div class="icon">🗑️</div><h3>Удалить страницы</h3><p>Укажите номера страниц, которые нужно вырезать из файла.</p>
+    </div>
+    <div class="card" style="border: 2px solid #27ae60;" onclick="openTool('pdf_merge', 'Объединить PDF', 'Склейте несколько PDF в один')">
+        <div class="icon">🔗</div><h3>Объединить PDF</h3><p>Склейте несколько файлов в один документ.</p>
+    </div>
+    <div class="card" style="border: 2px solid #8e44ad;" onclick="openTool('pdf_split', 'Разделить PDF', 'Извлеките страницы из PDF')">
+        <div class="icon">✂️</div><h3>Разделить PDF</h3><p>Разбейте документ на отдельные страницы.</p>
+    </div>
+    <div class="card" style="border: 2px solid #f39c12;" onclick="openTool('pdf_compress', 'Сжать PDF', 'Уменьшите размер файла')">
+        <div class="icon">🗜️</div><h3>Сжать PDF</h3><p>Уменьшите вес документа с сохранением качества.</p>
+    </div>
+    <div class="card" style="border: 2px solid #16a085;" onclick="openTool('img_to_pdf', 'Изображения в PDF', 'Конвертация JPG/PNG')">
+        <div class="icon">🖼️</div><h3>Фото в PDF</h3><p>Склейте ваши изображения в единый PDF документ.</p>
+    </div>
+    <div class="card" style="border: 2px solid #34495e;" onclick="openTool('pdf_to_word', 'PDF в Word', 'Прямая конвертация')">
+        <div class="icon">📄</div><h3>PDF в Word</h3><p>Конвертация цифрового PDF в редактируемый DOCX.</p>
+    </div>
+    <div class="card" style="border: 2px solid #2ecc71;" onclick="openTool('pdf_to_excel', 'PDF в Excel', 'Извлечение таблиц в .xlsx')">
+        <div class="icon">📊</div><h3>PDF в Excel</h3><p>Извлеките таблицы из цифрового PDF документа в формат Excel.</p>
+    </div>
+    <div class="card" style="border: 2px solid #3498db;" onclick="openTool('pdf_watermark', 'Водяной знак', 'Добавьте текст поверх страниц')">
+        <div class="icon">©️</div><h3>Водяной знак</h3><p>Защитите свой PDF текстовым водяным знаком.</p>
+    </div>
+    <div class="card" style="border: 2px solid #00cec9;" onclick="openTool('ocr_translate', 'OCR + Перевод', 'Распознать и перевести')">
+        <div class="icon">🌍</div><h3>OCR + Перевод</h3><p>Извлеките текст со скана и сразу переведите его на нужный язык.</p>
+    </div>
+</div>
+
+<div id="toolModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeModal()">&times;</span>
+        <h2 id="modal-title">Инструмент</h2>
+        <p id="modal-desc">Описание</p>
+        
+        <label class="upload-area" id="upload-zone">
+            <input type="file" id="fileInput" onchange="handleFileSelect()">
+            <div id="upload-text">Нажмите, чтобы выбрать файлы</div>
+        </label>
+        
+        <input type="text" id="extra-param" class="param-input" placeholder="...">
+        
+        <div id="annotation-area" style="display: none; margin-top: 20px;">
+            <p style="color: #e74c3c; font-weight: bold;">Обведите прямоугольниками сложные элементы, чтобы сохранить их как картинки.</p>
+            <div style="position: relative; display: inline-block; border: 1px solid #ccc; max-width: 100%; overflow: hidden;">
+                <img id="image-preview" style="max-width: 100%; display: block;" draggable="false">
+                <canvas id="draw-canvas" style="position: absolute; top: 0; left: 0; cursor: crosshair;"></canvas>
+            </div>
+            <br>
+            <button class="btn" style="background-color: #95a5a6; margin-top: 15px;" onclick="clearAnnotations()">Очистить рамки</button>
+        </div>
+        
+        <button id="start-btn" class="btn" style="display:none; margin-top: 20px;" onclick="startProcessing()">Начать обработку</button>
+        <div class="loader" id="loader"></div>
+        <p id="status-message" style="margin-top: 15px; font-weight: bold;"></p>
+        
+        <div id="result-area">
+            <div style="text-align: center;">
+                <h3 style="color: #2ecc71;">Готово!</h3>
+                <a id="download-btn" class="btn btn-success" href="#" download>Скачать результат</a>
+            </div>
+            <div id="text-container" style="display: none; border-top: 1px solid #eee; padding-top: 20px; margin-top: 20px;">
+                <div id="math-display" style="font-size: 20px; margin-bottom: 15px; overflow-x: auto;"></div>
+                <h4>Системное сообщение / Код:</h4>
+                <textarea id="extracted-text" oninput="updateMath()"></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentTool = '';
+    let boxes = [];
+    let isDrawing = false;
+    let startX, startY;
+    const canvas = document.getElementById('draw-canvas');
+    const ctx = canvas.getContext('2d');
+    const imgPreview = document.getElementById('image-preview');
+    let originalImageWidth = 0; let originalImageHeight = 0;
+
+    function openTool(toolId, title, desc) {
+        currentTool = toolId;
+        const modal = document.getElementById('toolModal');
+        modal.style.display = 'flex'; modal.style.pointerEvents = 'auto';
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-desc').innerText = desc;
+        document.getElementById('fileInput').value = '';
+        document.getElementById('upload-text').innerText = 'Нажмите, чтобы выбрать файлы';
+        document.getElementById('extra-param').value = ''; 
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('result-area').style.display = 'none';
+        document.getElementById('status-message').innerText = '';
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('annotation-area').style.display = 'none';
+        document.getElementById('upload-zone').style.display = 'flex';
+        
+        // Настройка поля ввода для разных инструментов
+        const extraParam = document.getElementById('extra-param');
+        if (['pdf_protect', 'pdf_unprotect', 'pdf_rotate', 'pdf_delete', 'pdf_watermark', 'ocr_translate'].includes(toolId)) {
+            extraParam.style.display = 'block';
+            if (toolId === 'pdf_protect') extraParam.placeholder = 'Придумайте пароль';
+            else if (toolId === 'pdf_unprotect') extraParam.placeholder = 'Введите текущий пароль';
+            else if (toolId === 'pdf_rotate') extraParam.placeholder = 'Угол: 90, 180 или 270';
+            else if (toolId === 'pdf_delete') extraParam.placeholder = 'Номера страниц (например: 1, 3, 5-7)';
+            else if (toolId === 'pdf_watermark') extraParam.placeholder = 'Текст знака (только АНГЛ, например: DRAFT)';
+            else if (toolId === 'ocr_translate') extraParam.placeholder = 'Язык (en, ru, fr, de, es...)';
+        } else {
+            extraParam.style.display = 'none';
+        }
+        
+        if(toolId === 'pdf_merge' || toolId === 'img_to_pdf') document.getElementById('fileInput').setAttribute('multiple', 'multiple');
+        else document.getElementById('fileInput').removeAttribute('multiple');
+    }
+
+    function closeModal() { document.getElementById('toolModal').style.display = 'none'; document.getElementById('toolModal').style.pointerEvents = 'none'; }
+
+    function handleFileSelect() {
+        const files = document.getElementById('fileInput').files;
+        if (files.length > 0) {
+            document.getElementById('upload-text').innerText = `Выбрано файлов: ${files.length}`;
+            if (currentTool === 'ocr_manual') {
+                const file = files[0];
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imgPreview.src = e.target.result;
+                        imgPreview.onload = function() {
+                            originalImageWidth = imgPreview.naturalWidth; originalImageHeight = imgPreview.naturalHeight;
+                            document.getElementById('annotation-area').style.display = 'block';
+                            document.getElementById('upload-zone').style.display = 'none';
+                            canvas.width = imgPreview.clientWidth; canvas.height = imgPreview.clientHeight;
+                            boxes = []; drawAllBoxes();
+                        }
+                    }
+                    reader.readAsDataURL(file);
+                } else { alert("Для ручной разметки выберите файл изображения (JPG/PNG)."); return; }
+            }
+            document.getElementById('start-btn').style.display = 'inline-block';
+        }
+    }
+
+    function clearAnnotations() { boxes = []; drawAllBoxes(); }
+    function drawAllBoxes() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'red'; ctx.lineWidth = 2;
+        boxes.forEach(box => { ctx.strokeRect(box.x, box.y, box.w, box.h); ctx.fillStyle = "rgba(255, 0, 0, 0.1)"; ctx.fillRect(box.x, box.y, box.w, box.h); });
+    }
+
+    canvas.addEventListener('mousedown', (e) => { isDrawing = true; const rect = canvas.getBoundingClientRect(); startX = e.clientX - rect.left; startY = e.clientY - rect.top; });
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const rect = canvas.getBoundingClientRect(); const currentX = e.clientX - rect.left; const currentY = e.clientY - rect.top;
+        drawAllBoxes(); ctx.strokeStyle = 'blue'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+        ctx.strokeRect(startX, startY, currentX - startX, currentY - startY); ctx.setLineDash([]);
+    });
+    canvas.addEventListener('mouseup', (e) => {
+        if (!isDrawing) return;
+        isDrawing = false;
+        const rect = canvas.getBoundingClientRect(); const endX = e.clientX - rect.left; const endY = e.clientY - rect.top;
+        const w = Math.abs(endX - startX); const h = Math.abs(endY - startY);
+        const x = Math.min(startX, endX); const y = Math.min(startY, endY);
+        if (w > 10 && h > 10) {
+            const scaleX = originalImageWidth / canvas.width; const scaleY = originalImageHeight / canvas.height;
+            boxes.push({ x: Math.round(x * scaleX), y: Math.round(y * scaleY), w: Math.round(w * scaleX), h: Math.round(h * scaleY) });
+        }
+        drawAllBoxes();
+    });
+
+    async function startProcessing() {
+        const files = document.getElementById('fileInput').files;
+        if (files.length === 0) return;
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('status-message').innerText = 'Загрузка...'; document.getElementById('loader').style.display = 'block';
+
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) { formData.append("files", files[i]); }
+        formData.append("tool_id", currentTool);
+        if (currentTool === 'ocr_manual') formData.append("boxes", JSON.stringify(boxes));
+        
+        const extraVal = document.getElementById('extra-param').value;
+        if (extraVal) formData.append("extra_param", extraVal);
+
+        try {
+            const response = await fetch('/upload/', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (!response.ok) { showModalError(data.detail || "Ошибка."); return; }
+            document.getElementById('status-message').innerText = 'В очереди...';
+            pollStatus(data.job_id);
+        } catch (error) { showModalError("Ошибка связи с сервером."); }
+    }
+
+    async function pollStatus(job_id) {
+        try {
+            const response = await fetch(`/task/${job_id}`);
+            const data = await response.json();
+
+            if (data.status === "pending" || data.status === "processing") {
+                document.getElementById('status-message').innerText = 'Идет обработка...';
+                setTimeout(() => pollStatus(job_id), 2000);
+            } 
+            else if (data.status === "completed") {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('status-message').innerText = '';
+                document.getElementById('result-area').style.display = 'block';
+                
+                let ext = 'pdf';
+                if (['ocr_text', 'ocr_math', 'pdf_to_word', 'ocr_manual', 'ocr_translate'].includes(currentTool)) ext = 'docx';
+                else if (currentTool === 'pdf_split') ext = 'zip';
+                else if (currentTool === 'pdf_to_excel') ext = 'xlsx'; // <-- ДОБАВИЛИ ЭТУ СТРОКУ
+                
+                document.getElementById('download-btn').href = `/download/${job_id}`;
+                document.getElementById('download-btn').download = `result_${job_id}.${ext}`;
+
+                const textContainer = document.getElementById('text-container');
+                if (['ocr_text', 'ocr_math', 'ocr_manual', 'pdf_protect', 'pdf_unprotect', 'pdf_rotate', 'pdf_delete', 'pdf_to_excel', 'pdf_watermark', 'ocr_translate'].includes(currentTool)) {
+                    textContainer.style.display = 'block';
+                    document.getElementById('extracted-text').value = data.extracted_text;
+                    if (currentTool === 'ocr_math') updateMath();
+                    else document.getElementById('math-display').innerHTML = '';
+                } else {
+                    textContainer.style.display = 'none';
+                }
+            } 
+            else if (data.status === "error") showModalError("Ошибка: " + data.extracted_text);
+        } catch (error) {
+            if (document.getElementById('result-area').style.display !== 'block') showModalError("Ошибка проверки статуса.");
+        }
+    }
+
+    function updateMath() {
+        const mathDisplay = document.getElementById('math-display');
+        mathDisplay.innerHTML = "\\[" + document.getElementById('extracted-text').value + "\\]";
+        MathJax.typesetPromise([mathDisplay]).catch(err => console.warn(err));
+    }
+
+    function showModalError(msg) { document.getElementById('loader').style.display = 'none'; document.getElementById('status-message').style.color = '#e74c3c'; document.getElementById('status-message').innerText = msg; }
+
+    const dropZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('fileInput');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.backgroundColor = '#ffcdd2';
+            dropZone.style.border = '2px solid #e53935';
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.backgroundColor = '#ffebee';
+            dropZone.style.border = '2px dashed #e53935';
+        }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        fileInput.files = files;
+        
+        handleFileSelect();
+    }, false);
+
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('Service Worker зарегистрирован!', reg))
+                .catch(err => console.error('Ошибка регистрации Service Worker:', err));
+        });
+    }
+</script>
+</body>
+</html>
