@@ -37,6 +37,9 @@ logger.info("Загрузка весов нейросети Pix2Tex...")
 math_model = LatexOCR()
 logger.info("Системы воркера готовы к работе!")
 
+# фикс единая директория которая расшарена между контейнерами 
+STORAGE_DIR = "/storage"
+
 def route_task(tool_id, file_paths, boxes=None, extra_param=None):
     """Главный диспетчер задач: определяет функцию обработки по tool_id."""
     job = get_current_job()
@@ -49,7 +52,7 @@ def route_task(tool_id, file_paths, boxes=None, extra_param=None):
     logger.info(f"Задача {job.id} начала выполнение. Инструмент: {tool_id}")
     
     try:
-        # Словарь маршрутизации
+        # словарь маршрутизации
         tasks = {
             'ocr_manual': lambda: do_ocr_manual(job.id, file_paths[0], boxes),
             'ocr_text': lambda: do_ocr_text(job.id, file_paths[0]),
@@ -94,14 +97,12 @@ def do_ocr_text(job_id, file_path):
     ext = file_path.lower().split('.')[-1]
     full_text = ""
     
-    # PDF (скан или обычный)
     if ext == 'pdf':
         print(" -> Обработка PDF через pdf2image...")
         images = convert_from_path(file_path)
         for i, img in enumerate(images):
             print(f" -> Распознавание страницы {i+1} из {len(images)}...")
             full_text += pytesseract.image_to_string(img, lang='rus+eng') + "\n\n"
-    #  картинка
     else:
         img = Image.open(file_path)
         full_text = pytesseract.image_to_string(img, lang='rus+eng')
@@ -110,12 +111,11 @@ def do_ocr_text(job_id, file_path):
     if not full_text:
         raise Exception("Не удалось распознать текст на документе.")
         
-    # сохраняем в Word
     doc = Document()
     doc.add_heading('Распознанный текст', 1)
     doc.add_paragraph(full_text)
     
-    output_path = os.path.join("/app/storage", f"{job_id}.docx")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
     doc.save(output_path)
     
     return full_text
@@ -130,22 +130,21 @@ def do_ocr_math(job_id, file_path):
     p = doc.add_paragraph()
     run = p.add_run(extracted_text)
     run.font.name = 'Courier New'
-    doc.save(os.path.join("/app/storage", f"{job_id}.docx"))
+    doc.save(os.path.join(STORAGE_DIR, f"{job_id}.docx"))
     return extracted_text
+
 def do_pdf_merge(job_id, file_paths):
     print(f"[{time.strftime('%X')}] Начинаю объединение {len(file_paths)} PDF файлов...")
     
     merger = PyPDF2.PdfMerger()
     
-    #  каждый файл по очереди в склейку
     for path in file_paths:
         if path.lower().endswith('.pdf'):
             merger.append(path)
         else:
             raise Exception(f"Файл {path} не является PDF!")
             
-    # сохраняем 
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     merger.write(output_path)
     merger.close()
     
@@ -157,17 +156,13 @@ def do_img_to_pdf(job_id, file_paths):
     print(f"[{time.strftime('%X')}] Конвертирую {len(file_paths)} фото в PDF...")
     
     image_list = []
-    # первая картинка
     first_image = Image.open(file_paths[0]).convert('RGB')
     
-    # остальные картинки
     for path in file_paths[1:]:
         img = Image.open(path).convert('RGB')
         image_list.append(img)
         
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
-    
-    # склеиваем всё в один PDF 
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     first_image.save(output_path, save_all=True, append_images=image_list)
     print(f"[{time.strftime('%X')}] PDF из картинок успешно создан!")
     return "Изображения успешно конвертированы в PDF."
@@ -179,7 +174,7 @@ def do_pdf_to_word(job_id, file_path):
     if not file_path.lower().endswith('.pdf'):
         raise Exception("Пожалуйста, загрузите файл формата PDF.")
         
-    output_path = os.path.join("/app/storage", f"{job_id}.docx")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
     
     cv = Converter(file_path)
     cv.convert(output_path)      
@@ -193,21 +188,17 @@ def do_pdf_split(job_id, file_path):
     print(f"[{time.strftime('%X')}] Начинаю разделение PDF на страницы...")
     
     reader = PyPDF2.PdfReader(file_path)
-    zip_path = os.path.join("/app/storage", f"{job_id}.zip")
+    zip_path = os.path.join(STORAGE_DIR, f"{job_id}.zip")
     
-    #  зип-архив
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # проходимся по каждой странице
         for i in range(len(reader.pages)):
             writer = PyPDF2.PdfWriter()
             writer.add_page(reader.pages[i])
             
-            # сохраняем одну страницу во временный файл
-            temp_page_path = os.path.join("/app/storage", f"temp_page_{i+1}.pdf")
+            temp_page_path = os.path.join(STORAGE_DIR, f"temp_page_{i+1}.pdf")
             with open(temp_page_path, "wb") as f:
                 writer.write(f)
                 
-            # страницу в архив и удаляем временный файл
             zipf.write(temp_page_path, arcname=f"page_{i+1}.pdf")
             os.remove(temp_page_path)
             
@@ -222,11 +213,10 @@ def do_pdf_compress(job_id, file_path):
     writer = PyPDF2.PdfWriter()
 
     for page in reader.pages:
-        
         page.compress_content_streams()
         writer.add_page(page)
 
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
@@ -252,20 +242,18 @@ def do_ocr_manual(job_id, file_path, boxes_json):
     for idx, box in enumerate(math_boxes):
         bx, by, bw, bh = box['x'], box['y'], box['w'], box['h']
         
-        # текст до рамки
         if by > current_y:
             text_roi = image[current_y:by, 0:image.shape[1]]
             if text_roi.shape[0] > 15:
-                text_path = f"/app/storage/temp_text_{job_id}_{idx}.png"
+                text_path = os.path.join(STORAGE_DIR, f"temp_text_{job_id}_{idx}.png")
                 cv2.imwrite(text_path, text_roi)
                 text_line = pytesseract.image_to_string(Image.open(text_path), lang='rus+eng', config='--oem 3 --psm 6').strip()
                 if len(text_line) > 2:
                     doc.add_paragraph(text_line)
                 if os.path.exists(text_path): os.remove(text_path)
                 
-        # вырез рамку, вставляем картинкой
         math_roi = image[by:by+bh, bx:bx+bw]
-        math_path = f"/app/storage/temp_img_{job_id}_{idx}.png"
+        math_path = os.path.join(STORAGE_DIR, f"temp_img_{job_id}_{idx}.png")
         cv2.imwrite(math_path, math_roi)
         try:
             print(f" -> Вставка рамки {idx} как картинки")
@@ -281,17 +269,18 @@ def do_ocr_manual(job_id, file_path, boxes_json):
     if current_y < image.shape[0]:
         tail_roi = image[current_y:image.shape[0], 0:image.shape[1]]
         if tail_roi.shape[0] > 15:
-            tail_path = f"/app/storage/temp_tail_{job_id}.png"
+            tail_path = os.path.join(STORAGE_DIR, f"temp_tail_{job_id}.png")
             cv2.imwrite(tail_path, tail_roi)
             text_line = pytesseract.image_to_string(Image.open(tail_path), lang='rus+eng', config='--oem 3 --psm 6').strip()
             if len(text_line) > 2:
                 doc.add_paragraph(text_line)
             if os.path.exists(tail_path): os.remove(tail_path)
             
-    output_path = os.path.join("/app/storage", f"{job_id}.docx")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
     doc.save(output_path)
     
     return "Документ размечен вручную. Зоны сохранены как изображения."
+
 def do_pdf_protect(job_id, file_path, password):
     if not password:
         raise Exception("Не указан пароль для защиты!")
@@ -302,9 +291,9 @@ def do_pdf_protect(job_id, file_path, password):
     for page in reader.pages:
         writer.add_page(page)
         
-    writer.encrypt(password) # Шифруем документ
+    writer.encrypt(password) 
     
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
@@ -318,7 +307,7 @@ def do_pdf_unprotect(job_id, file_path, password):
     
     if reader.is_encrypted:
         try:
-            reader.decrypt(password) # Пытаемся взломать переданным паролем
+            reader.decrypt(password)
         except:
             raise Exception("Неверный пароль!")
             
@@ -326,13 +315,13 @@ def do_pdf_unprotect(job_id, file_path, password):
     for page in reader.pages:
         writer.add_page(page)
         
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
     return "Защита с PDF успешно снята. Файл открыт."
+
 def do_pdf_rotate(job_id, file_path, angle_str):
-    # по умолчанию 90 градусов
     angle = int(angle_str) if angle_str and angle_str.isdigit() else 90
     
     reader = PyPDF2.PdfReader(file_path)
@@ -342,7 +331,7 @@ def do_pdf_rotate(job_id, file_path, angle_str):
         page.rotate(angle)
         writer.add_page(page)
         
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
@@ -360,7 +349,7 @@ def do_pdf_delete_pages(job_id, file_path, pages_str):
                 start, end = part.split("-")
                 pages_to_delete.update(range(int(start), int(end) + 1))
             except:
-                pass # Игнорируем ошибки ввода
+                pass 
         elif part.isdigit():
             pages_to_delete.add(int(part))
             
@@ -374,7 +363,7 @@ def do_pdf_delete_pages(job_id, file_path, pages_str):
     if len(writer.pages) == 0:
         raise Exception("Вы удалили все страницы! Документ пуст.")
         
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
@@ -382,7 +371,7 @@ def do_pdf_delete_pages(job_id, file_path, pages_str):
 
 def do_pdf_to_excel(job_id, file_path):
     print(f"[{time.strftime('%X')}] Запуск извлечения таблиц (PDF в Excel)...")
-    output_path = os.path.join("/app/storage", f"{job_id}.xlsx")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.xlsx")
     
     tables_found = 0
     
@@ -408,7 +397,6 @@ def do_pdf_watermark(job_id, file_path, watermark_text):
     if not watermark_text:
         watermark_text = "CONFIDENTIAL"
         
-    
     packet = io.BytesIO()
     can = canvas.Canvas(packet)
     
@@ -428,17 +416,16 @@ def do_pdf_watermark(job_id, file_path, watermark_text):
     writer = PyPDF2.PdfWriter()
     
     for page in reader.pages:
-        page.merge_page(watermark_page) # <-- Само наложение слоев!
+        page.merge_page(watermark_page) 
         writer.add_page(page)
         
-    output_path = os.path.join("/app/storage", f"{job_id}.pdf")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
     with open(output_path, "wb") as f:
         writer.write(f)
         
     return f"Водяной знак '{watermark_text}' успешно наложен на все страницы."
 
 def do_ocr_translate(job_id, file_path, target_lang):
-    # англ по умолчанию
     if not target_lang:
         target_lang = 'en'
     target_lang = target_lang.strip().lower()
@@ -448,27 +435,27 @@ def do_ocr_translate(job_id, file_path, target_lang):
     original_text = ""
     ext = file_path.lower().split('.')[-1]
 
-    # извлечение в зависимости от типа файла
     try:
         if ext == 'pdf':
-            # достать цифровой текст 
             reader = PyPDF2.PdfReader(file_path)
             for page in reader.pages:
                 text = page.extract_text()
                 if text:
                     original_text += text + "\n"
             
-            # если текст не нашли, длина меньше 10 - скан
             if len(original_text.strip()) < 10:
                 print(f"[{time.strftime('%X')}] Цифровой текст не найден. Запуск OCR для отсканированного PDF...")
-                original_text = "" # очищаем мусор
-                images = convert_from_path(file_path) # режем PDF на картинки
+                original_text = "" 
+                images = convert_from_path(file_path) 
                 for i, img in enumerate(images):
                     print(f" -> Распознавание страницы {i+1} из {len(images)}...")
                     page_text = pytesseract.image_to_string(img, lang='rus+eng')
                     original_text += page_text + "\n\n"
+        # фикс добавлена поддержка docx
+        elif ext == 'docx':
+            doc = Document(file_path)
+            original_text = "\n".join([p.text for p in doc.paragraphs])
         else:
-            # если это не PDF и не DOCX, считаем, что это картинка
             img = Image.open(file_path)
             original_text = pytesseract.image_to_string(img, lang='rus+eng').strip()
     except Exception as e:
@@ -478,7 +465,6 @@ def do_ocr_translate(job_id, file_path, target_lang):
     if len(original_text) < 2:
         raise Exception("Не удалось найти текст. Если это PDF, возможно, он отсканирован как картинка без текстового слоя.")
 
-    # перевод
     chunk_size = 4000 
     chunks = [original_text[i:i+chunk_size] for i in range(0, len(original_text), chunk_size)]
     translated_text = ""
@@ -492,7 +478,6 @@ def do_ocr_translate(job_id, file_path, target_lang):
     except Exception as e:
         raise Exception(f"Ошибка переводчика: {e}. Проверьте код языка (например: en, ru, de).")
 
-    # сохраняем
     doc_out = Document()
     doc_out.add_heading('Оригинальный текст', 1)
     doc_out.add_paragraph(original_text)
@@ -500,7 +485,7 @@ def do_ocr_translate(job_id, file_path, target_lang):
     doc_out.add_heading(f'Перевод ({target_lang})', 1)
     doc_out.add_paragraph(translated_text.strip())
 
-    output_path = os.path.join("/app/storage", f"{job_id}.docx")
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
     doc_out.save(output_path)
 
     preview = translated_text[:200] + "..." if len(translated_text) > 200 else translated_text
