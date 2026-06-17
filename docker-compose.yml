@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # 1. Веб-сервер Nginx (раздает статику и проксирует запросы)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./api_service/index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      - public_net
+    depends_on:
+      - api_service
+
+  # 2. Основной сервер API (FastAPI)
+  api_service:
+    build: 
+      context: ./api_service
+    environment:
+      - APP_ENV=${APP_ENV}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST}
+    volumes:
+      - shared_storage:/storage
+    networks:
+      - public_net
+      - private_net
+    depends_on:
+      - db
+      - redis
+
+  # 3. База данных PostgreSQL
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - private_net
+
+  # 4. Брокер сообщений Redis
+  redis:
+    image: redis:alpine
+    networks:
+      - private_net
+
+  # 5. Вычислительный модуль (Worker) для обработки файлов
+  ocr_worker:
+    build: 
+      context: ./ocr_worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST}
+    volumes:
+      - shared_storage:/storage
+    networks:
+      - private_net
+    depends_on:
+      - db
+      - redis
+
+# Настройка виртуальных сетей
+networks:
+  public_net:
+    driver: bridge
+  private_net:
+    driver: bridge # Изолированная сеть для БД и брокера
+
+# Настройка постоянных хранилищ (чтобы данные не пропали при перезагрузке)
+volumes:
+  postgres_data:
+  shared_storage:

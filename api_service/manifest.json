@@ -1,0 +1,16 @@
+{
+  "name": "DocuFlow - Все инструменты для документов",
+  "short_name": "DocuFlow",
+  "description": "Умная обработка PDF, OCR и переводчик в одном приложении.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5fa",
+  "theme_color": "#e53935",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3143/3143460.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
