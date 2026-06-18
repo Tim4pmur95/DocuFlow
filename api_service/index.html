@@ -55,6 +55,13 @@
     <div class="card" style="border: 2px solid #e74c3c;" onclick="openTool('ocr_math', 'Распознать формулы', 'Преобразование фотографий уравнений')">
         <div class="icon">∑</div><h3>OCR: Формулы (LaTeX)</h3><p>Преобразование изображений с математикой в цифровой формат.</p>
     </div>
+    
+    <div class="card" style="border: 2px solid #9b59b6;" onclick="openTool('pdf_unlock', 'Разблокировать PDF', 'Снять ограничения на печать и копирование')">
+        <div class="icon">🗝️</div><h3>Разблокировать PDF</h3><p>Снимите системный запрет на печать и копирование текста.</p>
+    </div>
+    <div class="card" style="border: 2px solid #c0392b;" onclick="openTool('pdf_bruteforce', 'Взлом пароля', 'Подобрать забытый пароль методом перебора')">
+        <div class="icon">🕵️‍♂️</div><h3>Взлом пароля</h3><p>Автоматический перебор PIN-кодов и частых паролей (Brute-force).</p>
+    </div>
     <div class="card" style="border: 2px solid #2c3e50;" onclick="openTool('pdf_protect', 'Защитить PDF', 'Установить пароль на документ')">
         <div class="icon">🔒</div><h3>Защитить PDF</h3><p>Надежно зашифруйте документ паролем от посторонних.</p>
     </div>
@@ -272,13 +279,14 @@
                 let ext = 'pdf';
                 if (['ocr_text', 'ocr_math', 'pdf_to_word', 'ocr_manual', 'ocr_translate'].includes(currentTool)) ext = 'docx';
                 else if (currentTool === 'pdf_split') ext = 'zip';
-                else if (currentTool === 'pdf_to_excel') ext = 'xlsx'; // <-- ДОБАВИЛИ ЭТУ СТРОКУ
+                else if (currentTool === 'pdf_to_excel') ext = 'xlsx';
                 
                 document.getElementById('download-btn').href = `/download/${job_id}`;
                 document.getElementById('download-btn').download = `result_${job_id}.${ext}`;
 
                 const textContainer = document.getElementById('text-container');
-                if (['ocr_text', 'ocr_math', 'ocr_manual', 'pdf_protect', 'pdf_unprotect', 'pdf_rotate', 'pdf_delete', 'pdf_to_excel', 'pdf_watermark', 'ocr_translate'].includes(currentTool)) {
+                // ОБНОВЛЕНО: Добавили pdf_unlock и pdf_bruteforce, чтобы показывать системное сообщение Воркера
+                if (['ocr_text', 'ocr_math', 'ocr_manual', 'pdf_protect', 'pdf_unprotect', 'pdf_rotate', 'pdf_delete', 'pdf_to_excel', 'pdf_watermark', 'ocr_translate', 'pdf_unlock', 'pdf_bruteforce'].includes(currentTool)) {
                     textContainer.style.display = 'block';
                     document.getElementById('extracted-text').value = data.extracted_text;
                     if (currentTool === 'ocr_math') updateMath();
