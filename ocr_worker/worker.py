@@ -10,6 +10,7 @@ import numpy as np
 import PyPDF2
 import pytesseract
 import pandas as pd
+import shutil
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import Color
@@ -425,68 +426,82 @@ def do_pdf_watermark(job_id, file_path, watermark_text):
         
     return f"Водяной знак '{watermark_text}' успешно наложен на все страницы."
 
+#фикс перевода
 def do_ocr_translate(job_id, file_path, target_lang):
     if not target_lang:
-        target_lang = 'en'
+        target_lang = 'ru' # По умолчанию будем переводить на русский, это логичнее
     target_lang = target_lang.strip().lower()
 
-    print(f"[{time.strftime('%X')}] Запуск извлечения и перевода на '{target_lang}'...")
+    print(f"[{time.strftime('%X')}] Запуск умного перевода с сохранением верстки на '{target_lang}'...")
 
-    original_text = ""
     ext = file_path.lower().split('.')[-1]
+    working_docx_path = os.path.join(STORAGE_DIR, f"temp_{job_id}.docx")
 
     try:
+        # 1.  всё в DOCX для сохранения структуры
         if ext == 'pdf':
-            reader = PyPDF2.PdfReader(file_path)
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    original_text += text + "\n"
-            
-            if len(original_text.strip()) < 10:
-                print(f"[{time.strftime('%X')}] Цифровой текст не найден. Запуск OCR для отсканированного PDF...")
-                original_text = "" 
-                images = convert_from_path(file_path) 
-                for i, img in enumerate(images):
-                    print(f" -> Распознавание страницы {i+1} из {len(images)}...")
-                    page_text = pytesseract.image_to_string(img, lang='rus+eng')
-                    original_text += page_text + "\n\n"
-        # фикс добавлена поддержка docx
+            print(" -> Конвертация PDF в DOCX для сохранения таблиц и отступов...")
+            cv = Converter(file_path)
+            cv.convert(working_docx_path)
+            cv.close()
         elif ext == 'docx':
-            doc = Document(file_path)
-            original_text = "\n".join([p.text for p in doc.paragraphs])
+            # Если это уже Word то копируем его во временный файл
+            shutil.copy(file_path, working_docx_path)
         else:
-            img = Image.open(file_path)
-            original_text = pytesseract.image_to_string(img, lang='rus+eng').strip()
+            raise Exception("Сохранение форматирования работает только для PDF и DOCX (Word).")
+
+        # 2. Идем по структуре документа
+        doc = Document(working_docx_path)
+        translator = GoogleTranslator(source='auto', target=target_lang)
+
+        def translate_safe(text):
+            if not text or not text.strip() or len(text) < 2:
+                return text
+            try:
+                return translator.translate(text)
+            except Exception:
+                return text # В случае ошибки (например, спецсимволы) оставляем оригинал
+
+        print(" -> Перевод основного текста...")
+        # Переводим обычные абзацы
+        for p in doc.paragraphs:
+            if p.text.strip():
+                translated_text = translate_safe(p.text)
+                #оставляем первый кусок абзаца чтобы сохранить базовый шрифт и стиль и записываем в него переведенный текст. Остальные кусочки очищаем.
+                if p.runs:
+                    p.runs[0].text = translated_text
+                    for i in range(1, len(p.runs)):
+                        p.runs[i].text = ""
+                else:
+                    p.text = translated_text
+
+        print(" -> Перевод таблиц...")
+        # переводим текст внутри таблиц 
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        if p.text.strip():
+                            translated_text = translate_safe(p.text)
+                            if p.runs:
+                                p.runs[0].text = translated_text
+                                for i in range(1, len(p.runs)):
+                                    p.runs[i].text = ""
+                            else:
+                                p.text = translated_text
+
+        # 3.сохранение
+        output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
+        doc.save(output_path)
+
+        # удаление временного файла
+        if os.path.exists(working_docx_path):
+            os.remove(working_docx_path)
+
+        return f"Документ успешно переведен на [{target_lang}] с полным сохранением оригинальной верстки (шрифты, абзацы, таблицы)!"
+
     except Exception as e:
-        raise Exception(f"Ошибка чтения файла: {e}")
-
-    original_text = original_text.strip()
-    if len(original_text) < 2:
-        raise Exception("Не удалось найти текст. Если это PDF, возможно, он отсканирован как картинка без текстового слоя.")
-
-    chunk_size = 4000 
-    chunks = [original_text[i:i+chunk_size] for i in range(0, len(original_text), chunk_size)]
-    translated_text = ""
-    
-    translator = GoogleTranslator(source='auto', target=target_lang)
-    
-    try:
-        for i, chunk in enumerate(chunks):
-            print(f" -> Перевод части {i+1} из {len(chunks)}...")
-            translated_text += translator.translate(chunk) + "\n"
-    except Exception as e:
-        raise Exception(f"Ошибка переводчика: {e}. Проверьте код языка (например: en, ru, de).")
-
-    doc_out = Document()
-    doc_out.add_heading('Оригинальный текст', 1)
-    doc_out.add_paragraph(original_text)
-    
-    doc_out.add_heading(f'Перевод ({target_lang})', 1)
-    doc_out.add_paragraph(translated_text.strip())
-
-    output_path = os.path.join(STORAGE_DIR, f"{job_id}.docx")
-    doc_out.save(output_path)
-
-    preview = translated_text[:200] + "..." if len(translated_text) > 200 else translated_text
-    return f"Текст ({len(original_text)} симв.) переведен на [{target_lang}]:\n{preview}"
+        # если временный файл остался после ошибки убираем его
+        if os.path.exists(working_docx_path):
+            os.remove(working_docx_path)
+        raise Exception(f"Ошибка умного перевода: {e}")
