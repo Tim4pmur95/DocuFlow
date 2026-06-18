@@ -11,6 +11,7 @@ import PyPDF2
 import pytesseract
 import pandas as pd
 import shutil
+import pikepdf
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import Color
@@ -70,6 +71,8 @@ def route_task(tool_id, file_paths, boxes=None, extra_param=None):
             'pdf_to_excel': lambda: do_pdf_to_excel(job.id, file_paths[0]),
             'pdf_watermark': lambda: do_pdf_watermark(job.id, file_paths[0], extra_param),
             'ocr_translate': lambda: do_ocr_translate(job.id, file_paths[0], extra_param),
+            'pdf_unlock': lambda: do_pdf_unlock(job.id, file_paths[0]),
+            'pdf_bruteforce': lambda: do_pdf_bruteforce(job.id, file_paths[0]),
         }
         
         result = tasks[tool_id]()
@@ -505,3 +508,69 @@ def do_ocr_translate(job_id, file_path, target_lang):
         if os.path.exists(working_docx_path):
             os.remove(working_docx_path)
         raise Exception(f"Ошибка умного перевода: {e}")
+    
+def do_pdf_unlock(job_id, file_path):
+    """
+    Снимает ограничения (Owner Password): запрет на печать, копирование текста.
+    Не работает, если файл требует пароль для самого открытия.
+    """
+    print(f"[{time.strftime('%X')}] Запуск разблокировки PDF (снятие ограничений)...")
+    
+    output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
+    
+    try:
+        # pikepdf автоматически снимает Owner-ограничения при открытии и сохранении
+        with pikepdf.open(file_path) as pdf:
+            pdf.save(output_path)
+            
+        return "Ограничения (печать, копирование) успешно сняты! Файл полностью разблокирован."
+        
+    except pikepdf.PasswordError:
+        # Если pikepdf ругается на пароль, значит это User Password
+        raise Exception("Файл зашифрован от открытия (User Password). Используйте функцию перебора (Brute-force)!")
+    except Exception as e:
+        raise Exception(f"Ошибка при разблокировке: {e}")
+
+def do_pdf_bruteforce(job_id, file_path):
+    """
+    Атака по словарю (Brute-force) для файлов, которые вообще не открываются без пароля.
+    """
+    print(f"[{time.strftime('%X')}] Запуск Brute-force на зашифрованный PDF...")
+    
+    reader = PyPDF2.PdfReader(file_path)
+    
+    if not reader.is_encrypted:
+        return "Файл не зашифрован. Пароль не требуется!"
+
+    # 1. База частых паролей (словарь)
+    common_passwords = ["123", "12345", "password", "admin", "qwerty", "12345678"]
+    
+    # 2. Генератор PIN-кодов (от 0000 до 9999)
+    pin_codes = [str(i).zfill(4) for i in range(10000)]
+    
+    # объединяем базы
+    passwords_to_try = common_passwords + pin_codes
+    
+    print(f" -> Начинаем перебор {len(passwords_to_try)} комбинаций. Это может занять время...")
+    
+    # 3. метод перебора
+    for pwd in passwords_to_try:
+        try:
+            # decrypt возвращает флаг успеха (0 - не вышло, 1 или 2 - успех)
+            if reader.decrypt(pwd):
+                print(f" -> ПАРОЛЬ ПОДОБРАН: {pwd}")
+                
+                # Снимаем защиту и сохраняем чистый файл
+                writer = PyPDF2.PdfWriter()
+                for page in reader.pages:
+                    writer.add_page(page)
+                    
+                output_path = os.path.join(STORAGE_DIR, f"{job_id}.pdf")
+                with open(output_path, "wb") as f:
+                    writer.write(f)
+                    
+                return f"Успех! Пароль подобран: '{pwd}'. Защита снята, документ открыт."
+        except Exception:
+            pass # Игнорируем ошибки при неудачной попытке
+
+    return "Не удалось подобрать пароль. Пароль слишком сложный (отсутствует в словаре PIN-кодов)."
